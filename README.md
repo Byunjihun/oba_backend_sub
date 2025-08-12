@@ -37,3 +37,16 @@ OBA Backend는 매일 최신 IT 기사를 제공하고,
 - **Data Pipeline**: Airflow
 - **Infra**: AWS EC2, S3, RDS, Redis
 - **Monitoring**: Prometheus + Grafana
+
+
+이 프로젝트에서 사용되는 기술 스택과 구현 구조에 대한 개발 문서는 Notion에 정리되어 있습니다.
+
+👉 기술 개발 문서 보기: [Notion 기술 개발 페이지 바로가기](https://www.notion.so/236a97372b20803699aee87278b229e7?source=copy_link)
+
+
+## 🔗 기술 문서에 포함된 내용
+
+- **기술별 담당자 및 진행 상황**
+- **설정 및 학습 자료**
+- **설치 가이드 및 유의 사항**
+- **기술 간 연계 구조 설명**
