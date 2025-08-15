@@ -1,6 +1,8 @@
 package oba.backend.server.config;
 
 import lombok.RequiredArgsConstructor;
+import oba.backend.server.jwt.JwtAuthenticationFilter; // import 추가
+import oba.backend.server.jwt.JwtProvider;             // import 추가
 import oba.backend.server.security.CustomUserDetailsService;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -14,6 +16,7 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter; // import 추가
 
 @Configuration
 @EnableWebSecurity
@@ -21,20 +24,18 @@ import org.springframework.security.web.SecurityFilterChain;
 public class SecurityConfig {
 
     private final CustomUserDetailsService customUserDetailsService;
+    private final JwtProvider jwtProvider; // (1) JwtProvider를 주입받도록 추가
 
     @Bean
     public PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();
     }
 
-    // 순환 참조 문제를 해결하기 위해 AuthenticationManager Bean을 명확하게 재정의
     @Bean
     public AuthenticationManager authenticationManager(AuthenticationConfiguration authenticationConfiguration) throws Exception {
         return authenticationConfiguration.getAuthenticationManager();
     }
 
-    // DaoAuthenticationProvider를 설정합니다.
-    // UserDetailsService와 PasswordEncoder를 사용하여 실제 인증을 처리합니다.
     @Bean
     public AuthenticationProvider authenticationProvider() {
         DaoAuthenticationProvider authProvider = new DaoAuthenticationProvider();
@@ -44,20 +45,21 @@ public class SecurityConfig {
     }
 
 
+    // SecurityConfig.java 파일의 filterChain 메소드를 아래와 같이 수정합니다.
+
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
                 .csrf(csrf -> csrf.disable())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/auth/**").permitAll()
+                        // 회원가입, 로그인, 토큰 재발급 API는 인증 없이 접근 허용
+                        .requestMatchers("/api/auth/signup", "/api/auth/login", "/api/auth/reissue").permitAll()
+                        // 나머지 모든 요청은 인증 필요
                         .anyRequest().authenticated()
                 )
-                // 위에서 만든 AuthenticationProvider를 등록합니다.
-                .authenticationProvider(authenticationProvider());
-
-
-        // TODO: JWT 인증 필터를 여기에 추가해야 합니다.
+                .authenticationProvider(authenticationProvider())
+                .addFilterBefore(new JwtAuthenticationFilter(jwtProvider), UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
     }

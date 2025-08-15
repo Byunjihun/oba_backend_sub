@@ -8,10 +8,7 @@ import oba.backend.server.dto.AuthDto.SignUpRequest;
 import oba.backend.server.dto.AuthDto.TokenResponse;
 import oba.backend.server.service.AuthService;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/auth")
@@ -29,6 +26,16 @@ public class AuthController {
     public ResponseEntity<String> signUp(@Valid @RequestBody SignUpRequest signUpRequest) {
         authService.signUp(signUpRequest);
         return ResponseEntity.ok("회원가입이 성공적으로 완료되었습니다.");
+    }
+
+    /**
+     * 회원 탈퇴 API
+     * @return 성공 메시지
+     */
+    @DeleteMapping("/withdraw")
+    public ResponseEntity<String> withdraw() {
+        authService.deleteMember();
+        return ResponseEntity.ok("성공적으로 회원 탈퇴되었습니다.");
     }
 
     /**
@@ -51,5 +58,15 @@ public class AuthController {
     public ResponseEntity<TokenResponse> reissue(@RequestBody ReissueRequest reissueRequest) {
         TokenResponse tokenResponse = authService.reissue(reissueRequest.refreshToken());
         return ResponseEntity.ok(tokenResponse);
+    }
+
+    /**
+     * 로그아웃 API
+     * @return 성공 메시지
+     */
+    @PostMapping("/logout")
+    public ResponseEntity<String> logout() {
+        authService.logout();
+        return ResponseEntity.ok("성공적으로 로그아웃되었습니다.");
     }
 }
