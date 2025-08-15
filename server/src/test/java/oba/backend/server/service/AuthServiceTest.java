@@ -11,6 +11,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -115,46 +116,33 @@ class AuthServiceTest {
     }
 
     @Test
-    @DisplayName("로그인 성공 디버깅")
-    void login_success_debugging() {
-        // --- GIVEN ---
-        System.out.println("1. 회원가입 요청 데이터: " + signUpRequest);
-
-        // 회원가입 실행
+    @DisplayName("로그아웃 성공: 로그아웃 요청 시 DB의 Refresh Token이 null로 변경된다.")
+    void logout_success() {
+        // given
+        // 먼저 사용자를 회원가입시키고 로그인하여 Refresh Token을 DB에 저장합니다.
         authService.signUp(signUpRequest);
-
-        // DB에 저장된 암호화된 비밀번호 직접 확인
-        Member savedMember = memberRepository.findByUsername("testuser")
-                .orElseThrow(() -> new AssertionError("DB에서 사용자를 찾지 못했습니다."));
-        String savedEncodedPassword = savedMember.getPassword();
-        System.out.println("2. DB에 저장된 암호화된 비밀번호: " + savedEncodedPassword);
-        System.out.println("   (길이: " + savedEncodedPassword.length() + ")");
-
-
-        // 로그인 요청 객체 생성
         LoginRequest loginRequest = new LoginRequest("testuser", "Password123!");
-        System.out.println("3. 로그인 요청 데이터: " + loginRequest);
+        authService.login(loginRequest);
+
+        // DB에 Refresh Token이 저장되었는지 먼저 확인합니다.
+        Member memberBeforeLogout = memberRepository.findByUsername("testuser").get();
+        assertThat(memberBeforeLogout.getRefreshToken()).isNotNull();
+
+        // 로그아웃을 요청할 사용자의 인증 정보를 SecurityContextHolder에 설정합니다.
+        // 실제 컨트롤러에서는 JwtAuthenticationFilter가 이 역할을 자동으로 해줍니다.
+        var authentication = new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(
+                "testuser", null, java.util.Collections.singletonList(() -> "ROLE_USER"));
+        SecurityContextHolder.getContext().setAuthentication(authentication);
 
 
-        // --- WHEN ---
-        // 테스트 코드에서 직접 비밀번호를 비교해보기
-        // 이 값이 반드시 true로 나와야 합니다.
-        boolean isMatchInTest = passwordEncoder.matches(loginRequest.password(), savedEncodedPassword);
-        System.out.println("4. 테스트 코드에서 직접 비교 결과: " + isMatchInTest);
+        // when
+        // 로그아웃 서비스를 호출합니다.
+        authService.logout();
 
 
-        // --- THEN ---
-        // 실제 로그인 로직 실행
-        System.out.println("5. 실제 AuthService.login() 로직 실행...");
-        try {
-            TokenResponse tokenResponse = authService.login(loginRequest);
-            System.out.println("6. 로그인 성공! 토큰: " + tokenResponse.accessToken());
-            assertThat(tokenResponse).isNotNull();
-        } catch (Exception e) {
-            System.err.println("6. 로그인 실패! 발생한 예외: " + e.getClass().getName());
-            // 예외의 전체 내용을 보고 싶으면 아래 줄의 주석을 푸세요.
-            // e.printStackTrace();
-            throw e; // 테스트가 실패하도록 예외를 다시 던짐
-        }
+        // then
+        // 로그아웃 후 DB에서 사용자를 다시 조회하여 Refresh Token이 null이 되었는지 확인합니다.
+        Member memberAfterLogout = memberRepository.findByUsername("testuser").get();
+        assertThat(memberAfterLogout.getRefreshToken()).isNull();
     }
 }

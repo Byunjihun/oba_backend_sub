@@ -10,6 +10,7 @@ import oba.backend.server.repository.MemberRepository;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -37,6 +38,23 @@ public class AuthService {
                 .password(encodedPassword)
                 .build();
         memberRepository.save(member);
+    }
+
+    @Transactional
+    public void deleteMember() {
+        // 1. SecurityContext에서 현재 인증된 사용자의 username을 가져옵니다.
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null || authentication.getName() == null) {
+            throw new RuntimeException("인증 정보가 없는 요청입니다.");
+        }
+        String username = authentication.getName();
+
+        // 2. DB에서 해당 사용자를 찾아옵니다.
+        Member member = memberRepository.findByUsername(username)
+                .orElseThrow(() -> new RuntimeException("사용자를 찾을 수 없습니다."));
+
+        // 3. 사용자를 DB에서 삭제합니다.
+        memberRepository.delete(member);
     }
 
     @Transactional
@@ -72,5 +90,22 @@ public class AuthService {
         member.updateRefreshToken(tokenResponse.refreshToken());
 
         return tokenResponse;
+    }
+
+    @Transactional
+    public void logout() {
+        // 1. SecurityContext에서 현재 인증된 사용자의 정보를 가져옵니다.
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null || authentication.getName() == null) {
+            // 이 경우는 보통 JwtAuthenticationFilter에서 토큰이 없을 때 걸러지지만, 안전을 위해 추가합니다.
+            throw new RuntimeException("인증 정보가 없는 요청입니다.");
+        }
+        String username = authentication.getName();
+
+        // 2. DB에서 해당 사용자를 찾아 Refresh Token을 null로 설정하여 무효화합니다.
+        Member member = memberRepository.findByUsername(username)
+                .orElseThrow(() -> new RuntimeException("사용자를 찾을 수 없습니다."));
+
+        member.updateRefreshToken(null);
     }
 }
