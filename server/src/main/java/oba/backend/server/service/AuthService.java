@@ -7,13 +7,19 @@ import oba.backend.server.dto.AuthDto.TokenResponse;
 import oba.backend.server.entity.Member;
 import oba.backend.server.jwt.JwtProvider;
 import oba.backend.server.repository.MemberRepository;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import oba.backend.server.security.CustomUserDetailsService;
+
+import java.time.Duration;
 
 @Service
 @RequiredArgsConstructor
@@ -23,8 +29,12 @@ public class AuthService {
     private final MemberRepository memberRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtProvider jwtProvider;
-    // AuthenticationManagerBuilder 대신 AuthenticationManager를 직접 주입받습니다.
     private final AuthenticationManager authenticationManager;
+    private final CustomUserDetailsService customUserDetailsService;
+    private final RedisTemplate<String, String> redisTemplate; // RedisTemplate 주입
+
+    @Value("${jwt.refresh-token-expiration-ms}")
+    private long refreshTokenExpirationMs; // Refresh Token 만료 시간 주입
 
     @Transactional
     public void signUp(SignUpRequest signUpRequest) {
@@ -42,18 +52,17 @@ public class AuthService {
 
     @Transactional
     public void deleteMember() {
-        // 1. SecurityContext에서 현재 인증된 사용자의 username을 가져옵니다.
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         if (authentication == null || authentication.getName() == null) {
             throw new RuntimeException("인증 정보가 없는 요청입니다.");
         }
         String username = authentication.getName();
 
-        // 2. DB에서 해당 사용자를 찾아옵니다.
         Member member = memberRepository.findByUsername(username)
                 .orElseThrow(() -> new RuntimeException("사용자를 찾을 수 없습니다."));
 
-        // 3. 사용자를 DB에서 삭제합니다.
+        // Redis에서도 Refresh Token 삭제
+        redisTemplate.delete(username);
         memberRepository.delete(member);
     }
 
@@ -61,51 +70,65 @@ public class AuthService {
     public TokenResponse login(LoginRequest loginRequest) {
         UsernamePasswordAuthenticationToken authenticationToken =
                 new UsernamePasswordAuthenticationToken(loginRequest.username(), loginRequest.password());
-
-        // 이제 authenticationManager를 직접 사용하여 인증합니다.
         Authentication authentication = authenticationManager.authenticate(authenticationToken);
 
         TokenResponse tokenResponse = jwtProvider.generateToken(authentication);
 
-        Member member = memberRepository.findByUsername(authentication.getName())
-                .orElseThrow(() -> new RuntimeException("사용자를 찾을 수 없습니다."));
-        member.updateRefreshToken(tokenResponse.refreshToken());
+        // Redis에 Refresh Token 저장 (Key: username, Value: refreshToken)
+        redisTemplate.opsForValue().set(
+                authentication.getName(),
+                tokenResponse.refreshToken(),
+                Duration.ofMillis(refreshTokenExpirationMs)
+        );
 
         return tokenResponse;
     }
 
-    // reissue 메소드는 변경사항 없습니다.
     @Transactional
     public TokenResponse reissue(String refreshToken) {
+        // 1. Refresh Token 유효성 검사
         if (!jwtProvider.validateToken(refreshToken)) {
             throw new RuntimeException("유효하지 않은 Refresh Token 입니다.");
         }
 
-        Member member = memberRepository.findByRefreshToken(refreshToken)
-                .orElseThrow(() -> new RuntimeException("로그아웃 된 사용자입니다. 다시 로그인해주세요."));
+        // 2. Refresh Token에서 사용자 이름(username) 가져오기
+        String username = jwtProvider.getUsernameFromToken(refreshToken);
+        if (username == null) {
+            throw new RuntimeException("Refresh Token에서 사용자 정보를 찾을 수 없습니다.");
+        }
 
-        Authentication authentication = jwtProvider.getAuthentication(member.getUsername());
+        // 3. Redis에 저장된 Refresh Token과 비교
+        String storedRefreshToken = redisTemplate.opsForValue().get(username);
+        if (storedRefreshToken == null || !storedRefreshToken.equals(refreshToken)) {
+            throw new RuntimeException("유효하지 않거나 로그아웃된 Refresh Token 입니다.");
+        }
+
+        // 4. 새로운 토큰 생성
+        UserDetails userDetails = customUserDetailsService.loadUserByUsername(username);
+        Authentication authentication = new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities());
         TokenResponse tokenResponse = jwtProvider.generateToken(authentication);
 
-        member.updateRefreshToken(tokenResponse.refreshToken());
+        // 5. Redis에 새로운 Refresh Token 저장
+        redisTemplate.opsForValue().set(
+                username,
+                tokenResponse.refreshToken(),
+                Duration.ofMillis(refreshTokenExpirationMs)
+        );
 
         return tokenResponse;
     }
 
     @Transactional
     public void logout() {
-        // 1. SecurityContext에서 현재 인증된 사용자의 정보를 가져옵니다.
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         if (authentication == null || authentication.getName() == null) {
-            // 이 경우는 보통 JwtAuthenticationFilter에서 토큰이 없을 때 걸러지지만, 안전을 위해 추가합니다.
             throw new RuntimeException("인증 정보가 없는 요청입니다.");
         }
         String username = authentication.getName();
 
-        // 2. DB에서 해당 사용자를 찾아 Refresh Token을 null로 설정하여 무효화합니다.
-        Member member = memberRepository.findByUsername(username)
-                .orElseThrow(() -> new RuntimeException("사용자를 찾을 수 없습니다."));
-
-        member.updateRefreshToken(null);
+        // Redis에서 해당 사용자의 Refresh Token 삭제
+        if (redisTemplate.opsForValue().get(username) != null) {
+            redisTemplate.delete(username);
+        }
     }
 }

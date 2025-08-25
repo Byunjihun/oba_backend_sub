@@ -30,7 +30,7 @@ public class Member {
     }
 
     // 리프레시 토큰 업데이트
-    public void updateRefreshToken(String refreshToken) {
-        this.refreshToken = refreshToken;
-    }
+//    public void updateRefreshToken(String refreshToken) {
+//        this.refreshToken = refreshToken;
+//    }
 }
