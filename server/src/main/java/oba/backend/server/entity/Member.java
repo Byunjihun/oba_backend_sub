@@ -15,22 +15,36 @@ public class Member {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    // 'username' 대신 'email'을 사용하고, 고유해야 합니다.
     @Column(unique = true, nullable = false)
-    private String username;
+    private String email;
+
+    // 화면에 표시될 닉네임을 추가합니다.
+    @Column(unique = true, nullable = false)
+    private String nickname;
 
     @Column(nullable = false)
     private String password;
 
-    private String refreshToken; // 리프레시 토큰 저장
+    private String refreshToken;
+
+    @Column(nullable = false)
+    private boolean isWithdrawn = false;
 
     @Builder
-    public Member(String username, String password) {
-        this.username = username;
+    public Member(String email, String nickname, String password) {
+        this.email = email;
+        this.nickname = nickname;
         this.password = password;
+        this.isWithdrawn = false;
     }
 
-    // 리프레시 토큰 업데이트
-//    public void updateRefreshToken(String refreshToken) {
-//        this.refreshToken = refreshToken;
-//    }
+    public void updateRefreshToken(String refreshToken) {
+        this.refreshToken = refreshToken;
+    }
+
+    public void withdraw() {
+        this.isWithdrawn = true;
+        this.refreshToken = null;
+    }
 }
