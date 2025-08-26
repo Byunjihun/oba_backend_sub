@@ -5,22 +5,23 @@ import oba.backend.server.dto.AuthDto.SignUpRequest;
 import oba.backend.server.dto.AuthDto.TokenResponse;
 import oba.backend.server.entity.Member;
 import oba.backend.server.repository.MemberRepository;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.transaction.annotation.Transactional;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 @SpringBootTest
-@Transactional // 각 테스트가 끝난 후, 데이터베이스 변경사항을 원래대로 되돌려(롤백) 다음 테스트에 영향을 주지 않게 합니다.
+@Transactional
 class AuthServiceTest {
 
     @Autowired
@@ -36,67 +37,101 @@ class AuthServiceTest {
 
     @BeforeEach
     void setUp() {
-        // 각 테스트가 실행되기 전에 공통적으로 사용할 회원가입 데이터를 미리 준비합니다.
-        signUpRequest = new SignUpRequest("testuser", "Password123!");
+        // 테스트용 회원가입 DTO를 email, nickname 기반으로 수정
+        signUpRequest = new SignUpRequest("test@example.com", "testuser", "Password123!");
+    }
+
+    @AfterEach
+    void tearDown() {
+        SecurityContextHolder.clearContext();
     }
 
     @Test
-    @DisplayName("회원가입 성공: 사용자가 올바른 정보로 가입을 시도하면 DB에 정상적으로 저장된다.")
+    @DisplayName("회원가입 성공: 올바른 정보로 가입 시 DB에 정상적으로 저장된다.")
     void signUp_success() {
-        // given (주어진 상황)
-        // signUpRequest는 @BeforeEach에서 준비됨
-
-        // when (무엇을 할 때)
+        // when
         authService.signUp(signUpRequest);
 
-        // then (결과는 이래야 한다)
-        // DB에서 방금 가입한 사용자를 찾는다.
-        Member foundMember = memberRepository.findByUsername("testuser")
+        // then
+        // email로 사용자를 조회
+        Member foundMember = memberRepository.findByEmailAndIsWithdrawnFalse("test@example.com")
                 .orElseThrow(() -> new AssertionError("테스트 실패: 사용자를 찾을 수 없습니다."));
 
-        // 사용자 이름이 일치하는지 확인한다.
-        assertThat(foundMember.getUsername()).isEqualTo("testuser");
-        // 비밀번호가 암호화되어 저장되었는지 확인한다.
+        // email과 nickname이 일치하는지 확인
+        assertThat(foundMember.getEmail()).isEqualTo("test@example.com");
+        assertThat(foundMember.getNickname()).isEqualTo("testuser");
         assertTrue(passwordEncoder.matches("Password123!", foundMember.getPassword()));
+        assertFalse(foundMember.isWithdrawn());
     }
 
     @Test
-    @DisplayName("회원가입 실패: 이미 존재하는 아이디로 가입을 시도하면 예외가 발생한다.")
-    void signUp_fail_duplicateUsername() {
+    @DisplayName("회원가입 실패: 이미 존재하는 (활성) 이메일로 가입을 시도하면 예외가 발생한다.")
+    void signUp_fail_duplicateEmail() {
         // given
-        // 먼저 사용자를 한 명 가입시켜 놓는다.
-        authService.signUp(signUpRequest);
+        authService.signUp(signUpRequest); // 먼저 'test@example.com'으로 가입
+        SignUpRequest duplicateEmailRequest = new SignUpRequest("test@example.com", "newuser", "Password123!");
 
         // when & then
-        // 똑같은 아이디로 다시 가입을 시도하면 RuntimeException이 발생하는지 확인한다.
         RuntimeException exception = assertThrows(RuntimeException.class, () -> {
-            authService.signUp(signUpRequest);
+            authService.signUp(duplicateEmailRequest);
         });
+        assertThat(exception.getMessage()).isEqualTo("이미 사용 중인 이메일입니다.");
+    }
 
-        // 예외 메시지가 "이미 사용 중인 아이디입니다."와 일치하는지 확인한다.
-        assertThat(exception.getMessage()).isEqualTo("이미 사용 중인 아이디입니다.");
+    @Test
+    @DisplayName("회원가입 실패: 탈퇴한 회원의 이메일로 가입을 시도하면 예외가 발생한다.")
+    void signUp_fail_emailOfWithdrawnUser() {
+        // given
+        // 1. 사용자를 가입시킨다.
+        authService.signUp(signUpRequest);
+        // 2. 해당 사용자를 탈퇴 처리한다 (Soft Delete).
+        Member member = memberRepository.findByEmail("test@example.com").get();
+        member.withdraw();
+        memberRepository.save(member);
+
+        // 3. 탈퇴한 회원의 이메일과 동일한 이메일로 가입을 시도한다. (닉네임은 다르게)
+        SignUpRequest withdrawnEmailRequest = new SignUpRequest("test@example.com", "anotheruser", "Password123!");
+
+        // when & then
+        RuntimeException exception = assertThrows(RuntimeException.class, () -> {
+            authService.signUp(withdrawnEmailRequest);
+        });
+        // 상세한 예외 메시지가 발생하는지 확인한다.
+        assertThat(exception.getMessage()).isEqualTo("탈퇴한 이력이 있는 이메일입니다. 다른 이메일을 사용해주세요.");
     }
 
 
     @Test
-    @DisplayName("로그인 성공: 올바른 아이디와 비밀번호로 로그인하면 토큰이 발급된다.")
+    @DisplayName("회원가입 실패: 이미 존재하는 닉네임으로 가입을 시도하면 예외가 발생한다.")
+    void signUp_fail_duplicateNickname() {
+        // given
+        authService.signUp(signUpRequest); // 먼저 'testuser' 닉네임으로 가입
+        SignUpRequest duplicateNicknameRequest = new SignUpRequest("new@example.com", "testuser", "Password123!");
+
+        // when & then
+        RuntimeException exception = assertThrows(RuntimeException.class, () -> {
+            authService.signUp(duplicateNicknameRequest);
+        });
+        assertThat(exception.getMessage()).isEqualTo("이미 사용 중인 닉네임입니다.");
+    }
+
+
+    @Test
+    @DisplayName("로그인 성공: 올바른 이메일과 비밀번호로 로그인하면 토큰이 발급된다.")
     void login_success() {
         // given
-        // 먼저 회원가입을 시켜놓는다.
         authService.signUp(signUpRequest);
-        LoginRequest loginRequest = new LoginRequest("testuser", "Password123!");
+        LoginRequest loginRequest = new LoginRequest("test@example.com", "Password123!");
 
         // when
         TokenResponse tokenResponse = authService.login(loginRequest);
 
         // then
-        // 토큰이 정상적으로 발급되었는지 확인한다.
         assertThat(tokenResponse).isNotNull();
         assertThat(tokenResponse.accessToken()).isNotBlank();
         assertThat(tokenResponse.refreshToken()).isNotBlank();
 
-        // DB에 Refresh Token이 잘 저장되었는지 확인한다.
-        Member member = memberRepository.findByUsername("testuser").get();
+        Member member = memberRepository.findByEmailAndIsWithdrawnFalse("test@example.com").get();
         assertThat(member.getRefreshToken()).isEqualTo(tokenResponse.refreshToken());
     }
 
@@ -105,44 +140,103 @@ class AuthServiceTest {
     void login_fail_wrongPassword() {
         // given
         authService.signUp(signUpRequest);
-        LoginRequest loginRequest = new LoginRequest("testuser", "WrongPassword123!");
+        LoginRequest loginRequest = new LoginRequest("test@example.com", "WrongPassword123!");
 
         // when & then
-        // assertThrows를 사용하여 BadCredentialsException이 발생하는 것이
-        // 이 테스트의 '성공' 조건임을 명시합니다.
         assertThrows(BadCredentialsException.class, () -> {
             authService.login(loginRequest);
         });
     }
 
     @Test
+    @DisplayName("로그인 실패: 탈퇴한 회원으로 로그인하면 예외가 발생한다.")
+    void login_fail_withdrawnUser() {
+        // given
+        authService.signUp(signUpRequest);
+        Member member = memberRepository.findByEmailAndIsWithdrawnFalse("test@example.com").get();
+        member.withdraw();
+        memberRepository.save(member);
+
+        LoginRequest loginRequest = new LoginRequest("test@example.com", "Password123!");
+
+        // when & then
+        assertThrows(BadCredentialsException.class, () -> {
+            authService.login(loginRequest);
+        });
+    }
+
+    @Test
+    @DisplayName("토큰 재발급 성공: 유효한 Refresh Token으로 재발급을 요청하면 새로운 토큰들이 발급된다.")
+    void reissue_success() throws InterruptedException {
+        // given
+        authService.signUp(signUpRequest);
+        LoginRequest loginRequest = new LoginRequest("test@example.com", "Password123!");
+        TokenResponse initialTokenResponse = authService.login(loginRequest);
+        String initialRefreshToken = initialTokenResponse.refreshToken();
+
+        Thread.sleep(1000);
+
+        // when
+        TokenResponse reissuedTokenResponse = authService.reissue(initialRefreshToken);
+
+        // then
+        assertThat(reissuedTokenResponse).isNotNull();
+        assertThat(reissuedTokenResponse.accessToken()).isNotEqualTo(initialTokenResponse.accessToken());
+        assertThat(reissuedTokenResponse.refreshToken()).isNotEqualTo(initialTokenResponse.refreshToken());
+
+        Member member = memberRepository.findByEmailAndIsWithdrawnFalse("test@example.com").get();
+        assertThat(member.getRefreshToken()).isEqualTo(reissuedTokenResponse.refreshToken());
+    }
+
+    @Test
+    @DisplayName("회원 탈퇴 성공 (Soft Delete): 탈퇴 요청 시 isWithdrawn이 true로 변경된다.")
+    void deleteMember_success_softDelete() {
+        // given
+        authService.signUp(signUpRequest);
+        LoginRequest loginRequest = new LoginRequest("test@example.com", "Password123!");
+        authService.login(loginRequest);
+
+        // SecurityContext에 email을 principal로 하는 인증 정보 설정
+        Authentication authentication = new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(
+                "test@example.com", null, java.util.Collections.singletonList(() -> "ROLE_USER"));
+        SecurityContextHolder.getContext().setAuthentication(authentication);
+
+        // when
+        authService.deleteMember();
+
+        // then
+        assertFalse(memberRepository.findByEmailAndIsWithdrawnFalse("test@example.com").isPresent());
+
+        Member withdrawnMember = memberRepository.findAll().stream()
+                .filter(m -> m.getEmail().equals("test@example.com"))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("테스트 실패: 탈퇴한 사용자를 DB에서 찾을 수 없습니다."));
+
+        assertTrue(withdrawnMember.isWithdrawn());
+        assertThat(withdrawnMember.getRefreshToken()).isNull();
+    }
+
+    @Test
     @DisplayName("로그아웃 성공: 로그아웃 요청 시 DB의 Refresh Token이 null로 변경된다.")
     void logout_success() {
         // given
-        // 먼저 사용자를 회원가입시키고 로그인하여 Refresh Token을 DB에 저장합니다.
         authService.signUp(signUpRequest);
-        LoginRequest loginRequest = new LoginRequest("testuser", "Password123!");
+        LoginRequest loginRequest = new LoginRequest("test@example.com", "Password123!");
         authService.login(loginRequest);
 
-        // DB에 Refresh Token이 저장되었는지 먼저 확인합니다.
-        Member memberBeforeLogout = memberRepository.findByUsername("testuser").get();
+        Member memberBeforeLogout = memberRepository.findByEmailAndIsWithdrawnFalse("test@example.com").get();
         assertThat(memberBeforeLogout.getRefreshToken()).isNotNull();
 
-        // 로그아웃을 요청할 사용자의 인증 정보를 SecurityContextHolder에 설정합니다.
-        // 실제 컨트롤러에서는 JwtAuthenticationFilter가 이 역할을 자동으로 해줍니다.
-        var authentication = new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(
-                "testuser", null, java.util.Collections.singletonList(() -> "ROLE_USER"));
+        // SecurityContext에 email을 principal로 하는 인증 정보 설정
+        Authentication authentication = new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(
+                "test@example.com", null, java.util.Collections.singletonList(() -> "ROLE_USER"));
         SecurityContextHolder.getContext().setAuthentication(authentication);
 
-
         // when
-        // 로그아웃 서비스를 호출합니다.
         authService.logout();
 
-
         // then
-        // 로그아웃 후 DB에서 사용자를 다시 조회하여 Refresh Token이 null이 되었는지 확인합니다.
-        Member memberAfterLogout = memberRepository.findByUsername("testuser").get();
+        Member memberAfterLogout = memberRepository.findByEmailAndIsWithdrawnFalse("test@example.com").get();
         assertThat(memberAfterLogout.getRefreshToken()).isNull();
     }
 }

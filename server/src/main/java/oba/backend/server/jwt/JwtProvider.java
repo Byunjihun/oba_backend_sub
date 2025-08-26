@@ -46,7 +46,7 @@ public class JwtProvider {
 
         long now = (new Date()).getTime();
 
-        // Access Token 생성
+        // Access Token 생성 (동일)
         String accessToken = Jwts.builder()
                 .setSubject(authentication.getName())
                 .claim("auth", authorities)
@@ -54,19 +54,14 @@ public class JwtProvider {
                 .signWith(key, SignatureAlgorithm.HS256)
                 .compact();
 
-        // Refresh Token 생성
+        // Refresh Token 생성 시 subject(사용자 이름) 제거
         String refreshToken = Jwts.builder()
-                .setSubject(authentication.getName())
+                // .setSubject(authentication.getName()) // <<< 이 줄을 삭제합니다.
                 .setExpiration(new Date(now + refreshTokenExpirationMs))
                 .signWith(key, SignatureAlgorithm.HS256)
                 .compact();
 
         return new TokenResponse("Bearer", accessToken, refreshToken);
-    }
-
-    //Redis에서는 Key-Value 형태로 저장해야 하므로, Refresh Token만으로 어떤 사용자의 것인지 알 수 있도록 토큰 자체에 사용자 이름(username)을 포함시키는 것이 편리
-    public String getUsernameFromToken(String token) {
-        return parseClaims(token).getSubject();
     }
 
     // JWT 토큰을 복호화하여 토큰에 들어있는 정보를 꺼내는 메서드
