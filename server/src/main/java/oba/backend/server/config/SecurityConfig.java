@@ -1,8 +1,8 @@
 package oba.backend.server.config;
 
 import lombok.RequiredArgsConstructor;
-import oba.backend.server.jwt.JwtAuthenticationFilter; // import 추가
-import oba.backend.server.jwt.JwtProvider;             // import 추가
+import oba.backend.server.jwt.JwtAuthenticationFilter;
+import oba.backend.server.jwt.JwtProvider;
 import oba.backend.server.security.CustomUserDetailsService;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -16,7 +16,7 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
-import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter; // import 추가
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
 @Configuration
 @EnableWebSecurity
