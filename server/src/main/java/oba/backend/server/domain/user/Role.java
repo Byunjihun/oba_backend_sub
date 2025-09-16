@@ -1,4 +1,5 @@
 package oba.backend.server.domain.user;
 
-public class Role {
+public enum Role {
+    USER, ADMIN, NOT_REGISTERED
 }
