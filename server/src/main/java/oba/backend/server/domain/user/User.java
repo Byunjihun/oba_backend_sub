@@ -1,22 +1,26 @@
 package oba.backend.server.domain.user;
 
 import jakarta.persistence.*;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
+import lombok.*;
 
 @Entity
 @Getter
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-@Table(name = "users")
+@Table(name = "users", indexes = {
+        @Index(name = "uk_users_identifier", columnList = "identifier", unique = true)
+})
 public class User {
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+
+    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    /**
+     * 고유 식별자: "provider:providerUserId"
+     * 예) "kakao:123456", "naver:AbCdE", "google:1081..."
+     */
+    @Column(nullable = false, unique = true, length = 128)
     private String identifier;
 
     @Enumerated(EnumType.STRING)
