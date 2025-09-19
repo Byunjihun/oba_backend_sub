@@ -39,6 +39,7 @@ public class OAuth2SuccessHandler implements AuthenticationSuccessHandler {
         refreshCookie.setHttpOnly(true);
         refreshCookie.setPath("/");
         refreshCookie.setMaxAge(7 * 24 * 60 * 60);
+
         response.addCookie(refreshCookie);
 
         // accessToken 은 임시로 쿼리 파라미터로 전달

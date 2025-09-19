@@ -20,4 +20,5 @@ public class OAuth2FailureHandler implements AuthenticationFailureHandler {
         String msg = URLEncoder.encode(exception.getMessage(), StandardCharsets.UTF_8);
         response.sendRedirect("/login?error=" + msg);
     }
+
 }
