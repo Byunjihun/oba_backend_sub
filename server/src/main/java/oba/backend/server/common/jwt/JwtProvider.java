@@ -64,5 +64,4 @@ public class JwtProvider {
     public String getSubject(String token) {
         return getClaims(token).getSubject();
     }
-
 }
