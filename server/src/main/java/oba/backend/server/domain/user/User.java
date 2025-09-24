@@ -12,8 +12,8 @@ import lombok.*;
         @Index(name = "uk_users_identifier", columnList = "identifier", unique = true)
 })
 public class User {
-
-    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     /**
