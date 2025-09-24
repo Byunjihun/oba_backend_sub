@@ -46,7 +46,6 @@ public class HomeController {
             }
             model.addAttribute("userName", n != null ? n.toString() : user.getName());
         }
-
         return "login";
     }
 }
