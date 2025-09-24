@@ -28,7 +28,6 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http,
                                            ClientRegistrationRepository repos) throws Exception {
-
         // 기본 인가요청 리졸버
         DefaultOAuth2AuthorizationRequestResolver baseResolver =
                 new DefaultOAuth2AuthorizationRequestResolver(repos, "/oauth2/authorization");
