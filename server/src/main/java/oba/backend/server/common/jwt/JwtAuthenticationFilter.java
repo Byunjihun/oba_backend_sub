@@ -22,7 +22,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private static final AntPathMatcher PATH_MATCHER = new AntPathMatcher();
     private static final Set<String> WHITELIST = Set.of(
-            "/", "/error", "/public/**", "/login/**", "/oauth2/**", "/actuator/**"
+            "/", "/error", "/public/**", "/login", "/login.html",
+            "/oauth2/**", "/actuator/**", "/css/**", "/js/**", "/images/**"
     );
 
     @Override
@@ -50,7 +51,6 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 SecurityContextHolder.getContext().setAuthentication(auth);
             }
         }
-
         filterChain.doFilter(request, response);
     }
 }

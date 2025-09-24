@@ -92,4 +92,5 @@ class CustomOAuth2UserServiceTest {
         assertThat(savedUser.getProvider()).isEqualTo(ProviderInfo.GOOGLE);
         assertThat(savedUser.getRole()).isEqualTo(Role.USER);
     }
+
 }

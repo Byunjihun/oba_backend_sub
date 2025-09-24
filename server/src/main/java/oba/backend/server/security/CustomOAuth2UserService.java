@@ -22,51 +22,57 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
     @Override
     public OAuth2User loadUser(OAuth2UserRequest userRequest) throws OAuth2AuthenticationException {
         OAuth2User oAuth2User = super.loadUser(userRequest);
-        String registrationId = userRequest.getClientRegistration().getRegistrationId(); // google, kakao, naver
+
+        String registrationId = userRequest.getClientRegistration().getRegistrationId(); // google|kakao|naver
         Map<String, Object> attributes = oAuth2User.getAttributes();
 
-        // 각 소셜별 정보 파싱
-        String id;
-        String email;
-        String name;
-        String picture;
+        String providerUserId;
+        String email = null, name = null, picture = null;
 
-        if ("google".equals(registrationId)) {
-            id = (String) attributes.get("sub");
-            email = (String) attributes.get("email");
-            name = (String) attributes.get("name");
-            picture = (String) attributes.get("picture");
-        } else if ("kakao".equals(registrationId)) {
-            Map<String, Object> kakaoAccount = (Map<String, Object>) attributes.get("kakao_account");
-            Map<String, Object> profile = (Map<String, Object>) kakaoAccount.get("profile");
+        switch (registrationId) {
+            case "google" -> {
+                providerUserId = (String) attributes.get("sub");
+                email = (String) attributes.get("email");
+                name = (String) attributes.get("name");
+                picture = (String) attributes.get("picture");
+            }
+            case "kakao" -> {
+                providerUserId = String.valueOf(attributes.get("id"));
 
-            id = String.valueOf(attributes.get("id"));
-            email = (String) kakaoAccount.get("email");
-            name = (String) profile.get("nickname");
-            picture = (String) profile.get("profile_image_url");
-        } else if ("naver".equals(registrationId)) {
-            Map<String, Object> response = (Map<String, Object>) attributes.get("response");
-
-            id = (String) response.get("id");
-            email = (String) response.get("email");
-            name = (String) response.get("name");
-            picture = (String) response.get("profile_image");
-        } else {
-            throw new OAuth2AuthenticationException("지원하지 않는 로그인 타입: " + registrationId);
+                Map<String, Object> kakaoAccount = (Map<String, Object>) attributes.get("kakao_account");
+                if (kakaoAccount != null) {
+                    email = (String) kakaoAccount.get("email"); // 동의 안 하면 null
+                    Map<String, Object> profile = (Map<String, Object>) kakaoAccount.get("profile");
+                    if (profile != null) {
+                        name = (String) profile.get("nickname");
+                        picture = (String) profile.get("profile_image_url");
+                    }
+                }
+            }
+            case "naver" -> {
+                Map<String, Object> response = (Map<String, Object>) attributes.get("response");
+                providerUserId = (String) response.get("id");
+                email = (String) response.get("email");
+                name = (String) response.get("name");
+                picture = (String) response.get("profile_image");
+            }
+            default -> throw new OAuth2AuthenticationException("지원하지 않는 로그인 타입: " + registrationId);
         }
 
-        // DB 저장 (신규 유저면 insert, 있으면 update)
-        User user = userRepository.findByIdentifier(id)
+        // ✅ 고유 식별자
+        String identifier = registrationId + ":" + providerUserId;
+
+        User user = userRepository.findByIdentifier(identifier)
                 .orElse(User.builder()
-                        .identifier(id)
+                        .identifier(identifier)
                         .provider(ProviderInfo.valueOf(registrationId.toUpperCase()))
                         .role(Role.USER)
                         .build());
 
         user.updateInfo(email, name, picture);
-
         userRepository.save(user);
 
-        return new UserPrincipal(id, email, attributes);
+        return new UserPrincipal(identifier, email, attributes, registrationId);
     }
+
 }

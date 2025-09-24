@@ -9,18 +9,24 @@ import java.util.Collections;
 import java.util.Map;
 
 /**
- * 소셜 로그인으로 받아온 사용자 정보를 Spring Security 인증 객체로 감싸는 클래스
+ * OAuth2 사용자 래퍼
  */
 public class UserPrincipal implements OAuth2User, UserDetails {
 
-    private final String id;
-    private final String email;
+    private final String id;                    // "provider:providerUserId"
+    private final String email;                 // null 가능
     private final Map<String, Object> attributes;
+    private final String provider;              // google | kakao | naver
 
-    public UserPrincipal(String id, String email, Map<String, Object> attributes) {
+    public UserPrincipal(String id, String email, Map<String, Object> attributes, String provider) {
         this.id = id;
         this.email = email;
         this.attributes = attributes;
+        this.provider = provider;
+    }
+
+    public String getProvider() {
+        return provider;
     }
 
     public String getId() {
@@ -31,6 +37,7 @@ public class UserPrincipal implements OAuth2User, UserDetails {
         return email;
     }
 
+    // OAuth2User
     @Override
     public Map<String, Object> getAttributes() {
         return attributes;
@@ -38,18 +45,18 @@ public class UserPrincipal implements OAuth2User, UserDetails {
 
     @Override
     public String getName() {
-        return (id != null && !id.isEmpty()) ? id : email;
+        return id;
     }
 
+    // UserDetails
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
-        return Collections.emptyList(); // 권한 없음
+        return Collections.emptyList();
     }
 
-    // UserDetails 구현부
     @Override
     public String getPassword() {
-        return null; // 소셜 로그인은 비밀번호 없음
+        return null;
     }
 
     @Override
@@ -76,4 +83,5 @@ public class UserPrincipal implements OAuth2User, UserDetails {
     public boolean isEnabled() {
         return true;
     }
+
 }
