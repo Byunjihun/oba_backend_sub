@@ -14,5 +14,4 @@ public class ProfileController {
         // 예: { id: 123, login: "...", email: "...", ... }
         return user.getAttributes();
     }
-
 }
