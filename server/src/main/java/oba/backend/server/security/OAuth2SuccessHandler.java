@@ -46,4 +46,5 @@ public class OAuth2SuccessHandler implements AuthenticationSuccessHandler {
         String redirect = "/?accessToken=" + URLEncoder.encode(accessToken, StandardCharsets.UTF_8);
         response.sendRedirect(redirect);
     }
+
 }
