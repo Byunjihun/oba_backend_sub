@@ -74,4 +74,5 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
 
         return new UserPrincipal(identifier, email, attributes, registrationId);
     }
+
 }
