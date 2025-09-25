@@ -1,4 +1,6 @@
 package oba.backend.server.dto;
 
-public class TokenResponse {
-}
+public record TokenResponse(
+        String accessToken,
+        String refreshToken
+) {}
