@@ -1,43 +1,33 @@
 package oba.backend.server.security;
 
+import lombok.Getter;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.oauth2.core.user.OAuth2User;
 
 import java.util.Collection;
-import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 
-/**
- * OAuth2 사용자 래퍼
- */
+@Getter
 public class UserPrincipal implements OAuth2User, UserDetails {
 
-    private final String id;                    // "provider:providerUserId"
-    private final String email;                 // null 가능
+    private final String id;
+    private final String email;
     private final Map<String, Object> attributes;
-    private final String provider;              // google | kakao | naver
+    private final Collection<? extends GrantedAuthority> authorities;
 
-    public UserPrincipal(String id, String email, Map<String, Object> attributes, String provider) {
+    public UserPrincipal(String id,
+                         String email,
+                         Map<String, Object> attributes,
+                         Collection<? extends GrantedAuthority> authorities) {
         this.id = id;
         this.email = email;
-        this.attributes = attributes;
-        this.provider = provider;
+        // ✅ null 방지 처리 (빈 컬렉션/맵으로 초기화)
+        this.attributes = (attributes == null) ? Map.of() : Map.copyOf(attributes);
+        this.authorities = (authorities == null) ? List.of() : List.copyOf(authorities);
     }
 
-    public String getProvider() {
-        return provider;
-    }
-
-    public String getId() {
-        return id;
-    }
-
-    public String getEmail() {
-        return email;
-    }
-
-    // OAuth2User
     @Override
     public Map<String, Object> getAttributes() {
         return attributes;
@@ -48,20 +38,19 @@ public class UserPrincipal implements OAuth2User, UserDetails {
         return id;
     }
 
-    // UserDetails
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
-        return Collections.emptyList();
+        return authorities;
     }
 
     @Override
     public String getPassword() {
-        return null;
+        return null; // 소셜 로그인 사용 시 패스워드 불필요
     }
 
     @Override
     public String getUsername() {
-        return email != null ? email : id;
+        return email;
     }
 
     @Override
@@ -83,5 +72,4 @@ public class UserPrincipal implements OAuth2User, UserDetails {
     public boolean isEnabled() {
         return true;
     }
-
 }

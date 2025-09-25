@@ -1,67 +1,87 @@
 package oba.backend.server.common.jwt;
 
-import io.jsonwebtoken.Claims;
-import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.SignatureAlgorithm;
+import io.jsonwebtoken.*;
+import io.jsonwebtoken.io.Decoders;
 import io.jsonwebtoken.security.Keys;
+import oba.backend.server.dto.TokenResponse;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.userdetails.User;
 import org.springframework.stereotype.Component;
 
-import java.security.Key;
-import java.util.Base64;
+import javax.crypto.SecretKey;
+import java.util.Collections;
 import java.util.Date;
-import java.util.Map;
+import java.util.List;
 
 @Component
 public class JwtProvider {
 
-    private final Key key;
-    private final long accessValidityMs;
-    private final long refreshValidityMs;
+    private final SecretKey key;
+    private final long accessTokenValidity;   // AccessToken 유효기간
+    private final long refreshTokenValidity;  // RefreshToken 유효기간
 
+    // ✅ application.properties / 환경변수에서 값 주입
     public JwtProvider(
-            @Value("${jwt.secret}") String secretBase64,
-            @Value("${jwt.access-token-expiration-ms:1800000}") long accessValidityMs,      // 30분
-            @Value("${jwt.refresh-token-expiration-ms:604800000}") long refreshValidityMs   // 7일
+            @Value("${jwt.secret}") String secret,
+            @Value("${jwt.access-token-expiration-ms:1800000}") long accessTokenValidity,
+            @Value("${jwt.refresh-token-expiration-ms:604800000}") long refreshTokenValidity
     ) {
-        this.key = Keys.hmacShaKeyFor(Base64.getDecoder().decode(secretBase64));
-        this.accessValidityMs = accessValidityMs;
-        this.refreshValidityMs = refreshValidityMs;
+        this.key = Keys.hmacShaKeyFor(Decoders.BASE64.decode(secret));
+        this.accessTokenValidity = accessTokenValidity;
+        this.refreshTokenValidity = refreshTokenValidity;
     }
 
-    public String createAccessToken(String subject, Map<String, Object> claims) {
-        return buildToken(subject, claims, accessValidityMs);
+    // ✅ 토큰 생성 (Access, Refresh 동시 발급)
+    public TokenResponse generateToken(Authentication authentication) {
+        String accessToken = createToken(authentication.getName(), "access", accessTokenValidity);
+        String refreshToken = createToken(authentication.getName(), "refresh", refreshTokenValidity);
+        return new TokenResponse(accessToken, refreshToken);
     }
 
-    public String createRefreshToken(String subject) {
-        return buildToken(subject, Map.of("type", "refresh"), refreshValidityMs);
-    }
+    private String createToken(String subject, String type, long validity) {
+        Date now = new Date();
+        Date expiry = new Date(now.getTime() + validity);
 
-    private String buildToken(String subject, Map<String, Object> claims, long validity) {
-        long now = System.currentTimeMillis();
         return Jwts.builder()
                 .setSubject(subject)
-                .addClaims(claims)
-                .setIssuedAt(new Date(now))
-                .setExpiration(new Date(now + validity))
+                .setIssuedAt(now)
+                .setExpiration(expiry)
+                .claim("type", type)
                 .signWith(key, SignatureAlgorithm.HS256)
                 .compact();
     }
 
-    public boolean validate(String token) {
+    // ✅ 토큰 검증
+    public boolean validateToken(String token) {
         try {
-            Jwts.parserBuilder().setSigningKey(key).build().parseClaimsJws(token);
+            Jwts.parserBuilder()
+                    .setSigningKey(key)
+                    .build()
+                    .parseClaimsJws(token);
             return true;
-        } catch (Exception e) {
+        } catch (JwtException | IllegalArgumentException e) {
             return false;
         }
     }
 
-    public Claims getClaims(String token) {
-        return Jwts.parserBuilder().setSigningKey(key).build().parseClaimsJws(token).getBody();
+    // ✅ Authentication 추출
+    public Authentication getAuthentication(String token) {
+        Claims claims = getClaims(token);
+        String username = claims.getSubject();
+        var authorities = List.of(new SimpleGrantedAuthority("ROLE_USER"));
+        User principal = new User(username, "", authorities);
+        return new UsernamePasswordAuthenticationToken(principal, token, authorities);
     }
 
-    public String getSubject(String token) {
-        return getClaims(token).getSubject();
+    // ✅ Claims 가져오기
+    public Claims getClaims(String token) {
+        return Jwts.parserBuilder()
+                .setSigningKey(key)
+                .build()
+                .parseClaimsJws(token)
+                .getBody();
     }
 }
